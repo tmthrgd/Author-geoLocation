@@ -5,7 +5,7 @@
  * Description: Allows authors to geocode their posts using the HTML5 <a href="http://dev.w3.org/geo/api/spec-source.html" target="_blank">Geolocation API</a> and display the location using <a href="http://maps.google.com/" target="_blank">Google Maps</a>. It also supports the <a href="http://code.google.com/p/geo-location-javascript/" target="_blank">geo-location-javascript library</a> and the <a href="http://www.maxmind.com/app/javascript_city" target="_blank">MaxMind GeoIP Javascript Service</a> for backwards compatibility.
  * Plugin Name: Author geoLocation
  * Plugin URI: http://xenthrax.com/wordpress/author-geolocation/
- * Version: 1.1a3
+ * Version: 1.1a4
  * 
  * Donate: http://xenthrax.com/donate/
  * 
@@ -55,6 +55,13 @@ class Author_geoLocation {
 	/**
 	 * @access private
 	 * @since 1.1
+	 * @var string
+	 */
+	private $file = __FILE__;
+	
+	/**
+	 * @access private
+	 * @since 1.1
 	 * @param string $key
 	 * @param bool $esc Optional.
 	 * @param bool $echo Optional.
@@ -65,7 +72,7 @@ class Author_geoLocation {
 		$key = strtolower($key);
 		
 		if (is_null($plugin_data)) {
-			$plugin_data = get_file_data(__FILE__, array(
+			$plugin_data = get_file_data($this->file, array(
 				'author'       => 'Author',
 				'authoruri'    => 'Author URI',
 				'donate'       => 'Donate',
@@ -130,10 +137,10 @@ class Author_geoLocation {
 		
 		switch ($context) {
 			case 'plugin':
-				$slug = plugin_basename(__FILE__);
+				$slug = plugin_basename($this->file);
 				break;
 			case 'settings':
-				$slug = 'settings_page_' . basename(dirname(__FILE__)) . '/' . basename(__FILE__, '.php');
+				$slug = 'settings_page_' . basename(dirname($this->file)) . '/' . basename($this->file, '.php');
 				break;
 			case 'name':
 			case 'slug':
@@ -214,7 +221,13 @@ class Author_geoLocation {
 	 * @since 1.0
 	 */
 	function __construct() {
-		load_plugin_textdomain($this->slug(), false, basename(dirname(__FILE__)) . '/lang');
+		/* @DEBUG */
+		/* Symbolic Link Fix */
+		if (stripos($this->file, WP_PLUGIN_DIR) !== 0)
+			$this->file = WP_PLUGIN_DIR . DIRECTORY_SEPARATOR . basename(__FILE__, '.php') . DIRECTORY_SEPARATOR . basename(__FILE__);
+		/* /@DEBUG */
+		
+		load_plugin_textdomain($this->slug(), false, basename(dirname($this->file)) . '/lang');
 		$this->add_option('version', $this->version());
 		
 		foreach ($this->default_options() as $name => $value)
@@ -226,6 +239,7 @@ class Author_geoLocation {
 		foreach (array('load-post-new.php', 'load-post.php') as $filter)
 			add_action($filter, array(&$this, '_admin_post_init'));
 		
+		add_filter('plugin_row_meta', array(&$this, '_plugin_row_meta'), 10, 2);
 		add_action("admin_head-{$this->slug('settings')}", array(&$this, '_admin_head_options'));
 		add_action("load-{$this->slug('settings')}", array(&$this, '_options_init'));
 		add_action('admin_notices', array(&$this, '_admin_notices'));
@@ -329,10 +343,12 @@ class Author_geoLocation {
 	 */
 	private function default_options() {
 		$options = array(
-			'legacy' => true,
-			'position' => 'after',
-			'type' => 'ROADMAP',
-			'zoom' => 15
+			'fallback-width'  => 640,
+			'fallback-height' => 250,
+			'legacy'          => true,
+			'position'        => 'after',
+			'type'            => 'ROADMAP',
+			'zoom'            => 15
 			);
 		return apply_filters("{$this->slug('hook')}-default-options", $options);
 	}
@@ -356,11 +372,38 @@ class Author_geoLocation {
 	
 	/**
 	 * @access private
-	 * @since 1.0
-	 * @return string Curent workign url
+ 	 * @since 1.0
+	 * @deprected 1.1
+	 * @deprected Use $Author_geoLocation->_plugin_url()
+	 * 
+	 * @return Current Working URL
+ 	 */
+	private function cwu() {
+		_deprecated_function(__CLASS__ . '::' . __FUNCTION__, '1.1', '$Author_geoLocation->_plugin_url()');
+		return $this->_plugin_url();
+	}
+	
+	/**
+	 * @access private
+	 * @since 1.1
+	 * @return string URL
 	 */
 	private function _plugin_url($path) {
-		return apply_filters("{$this->slug('hook')}-plugin-url", plugins_url($path, __FILE__), $path);
+		return apply_filters("{$this->slug('hook')}-plugin-url", plugins_url($path, $this->file), $path);
+	}
+	
+	/**
+	 * @access private
+	 * @since 1.1
+	 * @return array Links to display
+	 */
+	function _plugin_row_meta($links, $file) {
+		if ($file == $this->slug('plugin')) {
+			$links[] = '<a href="' . admin_url('options-general.php?page=' . urlencode($this->slug('plugin'))) . '">' . __('Settings', $this->slug()) . '</a>';
+			$links[] = "<a href=\"{$this->_plugin_data('donate')}\">" . __('Donate', $this->slug()) . '</a>';
+		}
+		
+		return $links;
 	}
 	
 	/**
@@ -370,7 +413,7 @@ class Author_geoLocation {
 	 */
 	function _options_init() {
 		if (isset($_POST["{$this->slug()}-submit"])) {
-			if (check_admin_referer(__FILE__ . "_{$this->slug()}_{$this->version()}")) {
+			if (check_admin_referer("{$this->file}_{$this->slug()}_{$this->version()}")) {
 				$this->set_option('legacy', isset($_POST["{$this->slug()}-legacy"]));
 				
 				if (isset($_POST["{$this->slug()}-position"])) {
@@ -394,11 +437,23 @@ class Author_geoLocation {
 						$this->set_option('zoom', intval($zoom));
 				}
 				
+				if (isset($_POST["{$this->slug()}-fallback-width"]) && isset($_POST["{$this->slug()}-fallback-height"])) {
+					$width = stripslashes(trim($_POST["{$this->slug()}-fallback-width"]));
+					$height = stripslashes(trim($_POST["{$this->slug()}-fallback-height"]));
+					
+					if (is_numeric($width) && intval($width) >= 0
+						&& is_numeric($height) && intval($height) >= 0) {
+						
+						$this->set_option('fallback-width', intval($width));
+						$this->set_option('fallback-height', intval($height));
+					}
+				}
+				
 				do_action("{$this->slug('hook')}-set-options");
 				$this->add_notice('Options saved successfully.');
 			}
 		} else if (isset($_POST["{$this->slug()}-reset"])) {
-			if (check_admin_referer(__FILE__ . "_{$this->slug()}_{$this->version()}")) {
+			if (check_admin_referer("{$this->file}_{$this->slug()}_{$this->version()}")) {
 				foreach ($this->default_options() as $name => $value)
 					$this->set_option($name, $value);
 				
@@ -456,10 +511,23 @@ class Author_geoLocation {
 	/**
 	 * @access public
 	 * @since 1.0
+	 * @deprected 1.1
+	 * @deprected Use $Author_geoLocation->last_location()
 	 * @param int $id
 	 * @return object|null Last known location
 	 */
 	function lastLocation($id = 0) {
+		_deprecated_function(__CLASS__ . '::' . __FUNCTION__, '1.1', '$Author_geoLocation->last_location()');
+		return $this->last_location($id);
+	}
+	
+	/**
+	 * @access public
+	 * @since 1.0
+	 * @param int $id
+	 * @return object|null Last known location
+	 */
+	function last_location($id = 0) {
 		global $wpdb;
 		
 		if (empty($id))
@@ -556,16 +624,14 @@ EOD;
 		$address = sprintf(__('Posted from %1$s', 'author-geolocation'), $this->_address_html($location));
 		$address_style = $show_address ? '' : ' style="display:none;"';
 		$type = strtolower($location->type);
-		$size = '640x250';
+		$size = "{$this->get_option('fallback-width')}x{$this->get_option('fallback-height')}";
 		
 		if (has_filter('Author_geoLocation_fallback_image_size')) {
-			_deprecated_function('Author_geoLocation_fallback_image_size', '1.1', "{$this->slug('hook')}-fallback-image-size");
+			_deprecated_function('Author_geoLocation_fallback_image_size', '1.1', "Fallback size in plugin options.");
 			$size = apply_filters('Author_geoLocation_fallback_image_size', $size, $location);
 		}
 		
-		$size = apply_filters("{$this->slug('hook')}-fallback-image-size", $size, $location, $show_address);
 		$map = <<<EOD
-{$this->_comment_tag(true)}
 <div class="{$this->slug()}">
 <div class="{$this->slug()}-address"{$address_style}>{$address}.</div>
 <div class="{$this->slug()}-map" id="{$this->slug()}-map-{$mapcount}">
@@ -575,8 +641,8 @@ EOD;
 (function(){document.getElementById('{$this->slug()}-map-{$mapcount}').style.display='block';var latlng=new google.maps.LatLng('{$location->latitude}','{$location->longitude}'),map = new google.maps.Map(document.getElementById('{$this->slug()}-map-{$mapcount}'),{zoom:{$location->zoom},center:latlng,mapTypeId:google.maps.MapTypeId.{$location->type}});new google.maps.Marker({position:latlng,map:map})})();
 </script>
 </div>
-{$this->_comment_tag(false)}
 EOD;
+		$map = "{$this->_comment_tag(true, false)}{$map}\n{$this->_comment_tag(false, false)}";
 		return apply_filters("{$this->slug('hook')}-map-html", $map, $location, $show_address, $size, $mapcount);
 	}
 	
@@ -644,14 +710,14 @@ EOD;
 	 */
 	function _save_post($id) {
 		if (isset($_POST["{$this->slug()}-nonce"])
-			&& wp_verify_nonce($_POST["{$this->slug()}-nonce"], __FILE__ . "_{$this->slug()}_{$this->version()}")
+			&& wp_verify_nonce($_POST["{$this->slug()}-nonce"], "{$this->file}_{$this->slug()}_{$this->version()}")
 			&& (!defined('DOING_AUTOSAVE') || !DOING_AUTOSAVE)
 			&& current_user_can(sprintf('edit_%s', $_POST['post_type']), $id)) {
 			
-			$address = stripslashes(trim($_POST["{$this->slug()}-address"]));
 			$location = (object)array('error' => true);
+			$address = stripslashes(trim($_POST["{$this->slug()}-address"]));
 			
-			if (!empty($address)) {
+			if (!isset($_POST["{$this->slug()}-clear"]) && !empty($address)) {
 				$latlng = stripslashes(trim($_POST["{$this->slug()}-latlng"]));
 				
 				if (empty($latlng) || !$_POST["{$this->slug()}-js"]) {
@@ -665,7 +731,7 @@ EOD;
 							$json->results[0]->geometry->location->lng
 							);
 					} else {
-						$this->add_notice(sprintf(__('Author geoLocation encountered an error while trying to convert %1$s to latlng coordanates.', $this->slug(), htmlentities($address)));
+						$this->add_notice(sprintf(__('Author geoLocation encountered an error while trying to convert %1$s to latlng coordanates.', $this->slug()), htmlentities($address)));
 						return $id;
 					}
 				} else
@@ -677,13 +743,13 @@ EOD;
 					$type = stripslashes(strtoupper(trim($_POST["{$this->slug()}-type{$suffix}"])));
 					$zoom = stripslashes(trim($_POST["{$this->slug()}-zoom{$suffix}"]));
 					$location = (object)array(
-						'address' => $address,
-						'latlng' => $latlng,
-						'latitude' => $latlng_[0],
+						'address'   => $address,
+						'latlng'    => $latlng,
+						'latitude'  => $latlng_[0],
 						'longitude' => $latlng_[1],
-						'position' => in_array($position, array('manual', 'before', 'after')) ? $position : $this->get_option('position'),
-						'type' => in_array($type, array('ROADMAP', 'SATELLITE', 'HYBRID', 'TERRAIN')) ? $type : $this->get_option('type'),
-						'zoom' => (is_numeric($zoom) && intval($zoom) >= 0) ? intval($zoom) : $this->get_option('zoom')
+						'position'  => in_array($position, array('manual', 'before', 'after')) ? $position : $this->get_option('position'),
+						'type'      => in_array($type, array('ROADMAP', 'SATELLITE', 'HYBRID', 'TERRAIN')) ? $type : $this->get_option('type'),
+						'zoom'      => (is_numeric($zoom) && intval($zoom) >= 0) ? intval($zoom) : $this->get_option('zoom')
 						);
 				}
 			}
@@ -707,7 +773,7 @@ EOD;
 		$location = !empty($id) ? $this->location($id) : null;
 		
 		if (is_null($location))
-			$location = $this->lastLocation();
+			$location = $this->last_location();
 		
 		$pos = $location ? $location->position : $this->get_option('position');
 		$type = $location ? $location->type : $this->get_option('type');
@@ -719,7 +785,7 @@ EOD;
 		$this->_comment_tag(true);
 ?>
 	<div id="<?php $this->slug(true, true); ?>">
-		<?php wp_nonce_field(__FILE__ . "_{$this->slug()}_{$this->version()}", "{$this->slug()}-nonce"); ?>
+		<?php wp_nonce_field("{$this->file}_{$this->slug()}_{$this->version()}", "{$this->slug()}-nonce"); ?>
 		<input type="hidden" id="<?php $this->slug(true, true); ?>-js" name="<?php $this->slug(true, true); ?>-js" value="0" />
 		<input type="hidden" id="<?php $this->slug(true, true); ?>-type" name="<?php $this->slug(true, true); ?>-type" value="<?php echo $type; ?>" />
 		<input type="hidden" id="<?php $this->slug(true, true); ?>-zoom" name="<?php $this->slug(true, true); ?>-zoom" value="<?php echo $zoom; ?>" />
@@ -727,6 +793,8 @@ EOD;
 		<div>
 			<input type="text" id="<?php $this->slug(true, true); ?>-address" name="<?php $this->slug(true, true); ?>-address" value="<?php echo $location ? esc_attr($location->address) : ''; ?>" onchange="<?php $this->slug('js', true, true); ?>_geocode();" autocomplete="off" />
 			<input type="button" value="Refresh" class="button hide-if-no-js" onclick="<?php $this->slug('js', true, true); ?>_go();" />
+			<input type="button" value="Clear" class="button hide-if-no-js" onclick="<?php $this->slug('js', true, true); ?>_clear();" />
+			<input type="submit" value="Clear" class="button hide-if-js" id="<?php $this->slug(true, true); ?>-clear" name="<?php $this->slug(true, true); ?>-clear" />
 		</div>
 		<div>
 			<label for="<?php $this->slug(true, true); ?>-position"><?php _e('Position', $this->slug()); ?></label>
@@ -760,7 +828,7 @@ EOD;
 	 * @return void
 	 */
 	function _admin_menu() {
-		add_options_page($this->_plugin_data('name'), $this->_plugin_data('name'), 'manage_options', __FILE__, array(&$this, '_options_page'));
+		add_options_page($this->_plugin_data('name'), $this->_plugin_data('name'), 'manage_options', $this->file, array(&$this, '_options_page'));
 		
 		foreach (array('page', 'post', 'custom_post_type') as $type) //verify this works for custom post types!
 			add_meta_box('location', 'Location', array(&$this, '_admin_meta_box'), $type, 'normal', 'high');
@@ -796,7 +864,7 @@ EOD;
 		$location = !empty($id) ? $this->location($id) : null;
 		
 		if (is_null($location))
-			$location = $this->lastLocation();
+			$location = $this->last_location();
 		
 		if (!apply_filters("{$this->slug('hook')}-do-post-head", true, $id, $location))
 			return;
@@ -804,8 +872,8 @@ EOD;
 		$this->_comment_tag(true);
 ?>
 <style type="text/css">
-#<?php $this->slug(true, true); ?>-address{width:100%;}
-body.js #<?php $this->slug(true, true); ?>-address{width:90%;}
+#<?php $this->slug(true, true); ?>-address{width:90%;}
+body.js #<?php $this->slug(true, true); ?>-address{width:83%;}
 #<?php $this->slug(true, true); ?>-map{width:100%;height:250px;overflow:hidden;text-align:center;}
 #<?php $this->slug(true, true); ?>>div{margin-top:5px;}
 </style>
@@ -890,10 +958,8 @@ function <?php $this->slug('js', true, true); ?>_go() {
 }
 <?php } else { ?>
 function <?php $this->slug('js', true, true); ?>_fallback(e) {
-	if (e.code == 1) {
-		<?php $this->slug('js', true, true); ?>_center(new google.maps.LatLng(0, 0));
-		jQuery('#<?php $this->slug(true, true); ?>-address,#<?php $this->slug(true, true); ?>-latlng').val('');
-	}
+	if (e.code == 1)
+		<?php $this->slug('js', true, true); ?>_clear();
 }
 
 function <?php $this->slug('js', true, true); ?>_go() {
@@ -901,6 +967,11 @@ function <?php $this->slug('js', true, true); ?>_go() {
 		navigator.geolocation.getCurrentPosition(<?php $this->slug('js', true, true); ?>_callback, <?php $this->slug('js', true, true); ?>_fallback);
 }
 <?php } ?>
+
+function <?php $this->slug('js', true, true); ?>_clear() {
+	<?php $this->slug('js', true, true); ?>_center(new google.maps.LatLng(0, 0));
+	jQuery('#<?php $this->slug(true, true); ?>-address,#<?php $this->slug(true, true); ?>-latlng').val('');
+}
 
 jQuery(function() {
 	var latlng = new google.maps.LatLng('<?php echo $location ? $location->latitude : '0'; ?>', '<?php echo $location ? $location->longitude : '0'; ?>');
@@ -967,36 +1038,61 @@ jQuery(function() {
 					<tr><td>&nbsp;</td></tr>
 					<tr>
 						<th scope="row"><?php _e('Legacy:', $this->slug()); ?></th>
-						<td><input type="checkbox" name="<?php $this->slug(true, true); ?>-legacy"<?php checked($this->get_option('legacy')); ?> /> <?php _e('Support browsers that do not have the <a href="http://dev.w3.org/geo/api/spec-source.html" target="_blank">Geolocation API</a> with the <a href="http://code.google.com/p/geo-location-javascript/" target="_blank">geo-location-javascript library</a> and <a href="" target="_blank">Google Gears</a>.', $this->slug()); ?></td>
+						<td>
+							<label>
+								<input type="checkbox" name="<?php $this->slug(true, true); ?>-legacy"<?php checked($this->get_option('legacy')); ?> />
+								<?php _e('Support browsers that do not have the <a href="http://dev.w3.org/geo/api/spec-source.html" target="_blank">Geolocation API</a> with the <a href="http://code.google.com/p/geo-location-javascript/" target="_blank">geo-location-javascript library</a> and <a href="" target="_blank">Google Gears</a>.', $this->slug()); ?> 
+							</label>
+						</td>
 					</tr>
 					<tr>
 						<th scope="row"><?php _e('Position:', $this->slug()); ?></th>
 						<td>
-							<select name="<?php $this->slug(true, true); ?>-position">
-								<option value="manual"<?php selected($pos, 'manual'); ?>><?php _e('Manual', $this->slug()); ?></option>
-								<option value="before"<?php selected($pos, 'before'); ?>><?php _e('Before', $this->slug()); ?></option>
-								<option value="after"<?php selected($pos, 'after'); ?>><?php _e('After', $this->slug()); ?></option>
-							</select>
-							<?php _e('The default position to display the location in the post.', $this->slug()); ?>
+							<label>
+								<select name="<?php $this->slug(true, true); ?>-position">
+									<option value="manual"<?php selected($pos, 'manual'); ?>><?php _e('Manual', $this->slug()); ?></option>
+									<option value="before"<?php selected($pos, 'before'); ?>><?php _e('Before', $this->slug()); ?></option>
+									<option value="after"<?php selected($pos, 'after'); ?>><?php _e('After', $this->slug()); ?></option>
+								</select>
+								<?php _e('The default position to display the location in the post.', $this->slug()); ?> 
+							</label>
 						</td>
 					</tr>
 					<tr>
 						<th scope="row"><?php _e('Type:', $this->slug()); ?></th>
 						<td>
-							<select name="<?php $this->slug(true, true); ?>-type">
-								<option value="ROADMAP"<?php selected($type, 'ROADMAP'); ?>><?php _e('Map', $this->slug()); ?></option>
-								<option value="SATELLITE"<?php selected($type, 'SATELLITE'); ?>><?php _e('Satellite', $this->slug()); ?></option>
-								<option value="HYBRID"<?php selected($type, 'HYBRID'); ?>><?php _e('Hybrid', $this->slug()); ?></option>
-								<option value="TERRAIN"<?php selected($type, 'TERRAIN'); ?>><?php _e('Terrain', $this->slug()); ?></option>
-							</select>
-							<?php _e('The default type of map to display.', $this->slug()); ?>
+							<label>
+								<select name="<?php $this->slug(true, true); ?>-type">
+									<option value="ROADMAP"<?php selected($type, 'ROADMAP'); ?>><?php _e('Map', $this->slug()); ?></option>
+									<option value="SATELLITE"<?php selected($type, 'SATELLITE'); ?>><?php _e('Satellite', $this->slug()); ?></option>
+									<option value="HYBRID"<?php selected($type, 'HYBRID'); ?>><?php _e('Hybrid', $this->slug()); ?></option>
+									<option value="TERRAIN"<?php selected($type, 'TERRAIN'); ?>><?php _e('Terrain', $this->slug()); ?></option>
+								</select>
+								<?php _e('The default type of map to display.', $this->slug()); ?> 
+							</label>
 						</td>
 					</tr>
 					<tr>
 						<th scope="row"><?php _e('Zoom:', $this->slug()); ?></th>
 						<td>
-							<input name="<?php $this->slug(true, true); ?>-zoom" value="<?php echo $this->get_option('zoom'); ?>" type="number" min="0" />
-							<?php _e('The default zoom of the maps.', $this->slug()); ?>
+							<label>
+								<input name="<?php $this->slug(true, true); ?>-zoom" value="<?php echo $this->get_option('zoom'); ?>" type="number" min="0" />
+								<?php _e('The default zoom of the maps.', $this->slug()); ?> 
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php _e('Fallback Image Size:', $this->slug()); ?></th>
+						<td>
+							<label>
+								<input name="<?php $this->slug(true, true); ?>-fallback-width" value="<?php echo $this->get_option('fallback-width'); ?>" type="number" min="0" />
+								<?php _e('The width of the fallback image maps.', $this->slug()); ?> 
+							</label>
+							<br />
+							<label>
+								<input name="<?php $this->slug(true, true); ?>-fallback-height" value="<?php echo $this->get_option('fallback-height'); ?>" type="number" min="0" />
+								<?php _e('The height of the fallback image maps.', $this->slug()); ?> 
+							</label>
 						</td>
 					</tr>
 <?php do_action("{$this->slug('hook')}-options-page"); ?>
@@ -1012,11 +1108,11 @@ jQuery(function() {
 					</tr>
 					<tr>
 						<th></th>
-						<td style="font-size:80%;"><?php _e('This product uses the <a href="http://www.maxmind.com/app/javascript_city" target="_blank">GeoIP JavaScript Service</a> by <a href="http://www.maxmind.com/" target="_blank">MaxMind</a>.', $this->slug()); ?></td>
+						<td style="font-size:80%;"><?php _e('This plugin uses <a href="http://www.maxmind.com/en/javascript" target="_blank">MaxMind\'s GeoIP JavaScript Service</a>.', $this->slug()); ?></td>
 					</tr>
 				</table>
 			</fieldset>
-			<?php wp_nonce_field(__FILE__ . "_{$this->slug()}_{$this->version()}"); ?>
+			<?php wp_nonce_field("{$this->file}_{$this->slug()}_{$this->version()}"); ?>
 		</form>
 	</div>
 <?php
