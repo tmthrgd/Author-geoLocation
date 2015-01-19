@@ -5,7 +5,7 @@
  * Description: Allows authors to geocode their posts using the HTML5 <a href="http://dev.w3.org/geo/api/spec-source.html" target="_blank">Geolocation API</a> and display the location using <a href="http://maps.google.com/" target="_blank">Google Maps</a>. It also supports the <a href="http://code.google.com/p/geo-location-javascript/" target="_blank">geo-location-javascript library</a> and the <a href="http://www.maxmind.com/app/javascript_city" target="_blank">MaxMind GeoIP Javascript Service</a> for backwards compatibility.
  * Plugin Name: Author geoLocation
  * Plugin URI: http://xenthrax.com/wordpress/author-geolocation/
- * Version: 1.1a1
+ * Version: 1.1a2
  * 
  * Plugin Shortlink: http://xenthrax.com/author-geolocation/
  * Other Plugins: http://xenthrax.com/wordpress/
@@ -503,7 +503,7 @@ EOD;
 							$json->results[0]->geometry->location->lng
 							);
 					} else {
-						$this->add_notice(sprintf(__('Author geoLocation encountered an error while trying to convert %1$s to latlng coordanates.', 'author-geolocation'), htmlentities($address));
+						$this->add_notice(sprintf(__('Author geoLocation encountered an error while trying to convert %1$s to latlng coordanates.', 'author-geolocation'), htmlentities($address)));
 						return $id;
 					}
 				} else
@@ -635,9 +635,9 @@ body.js #Author-geoLocation-address{width:90%;}
 #Author-geoLocation>div{margin-top:5px;}
 </style>
 <script type="text/javascript">
-var Author_geoLocation_geocoder,
-	Author_geoLocation_map,
-	Author_geoLocation_marker;
+var Author_geoLocation_geocoder;
+var Author_geoLocation_map;
+var Author_geoLocation_marker;
 
 function Author_geoLocation_center(location) {
 	Author_geoLocation_map.setCenter(location);
@@ -682,8 +682,8 @@ function Author_geoLocation_fallback(e) {
 		Author_geoLocation_center(new google.maps.LatLng(0, 0));
 		jQuery('#Author-geoLocation-address,#Author-geoLocation-latlng').val('');
 	} else {
-		var old = document.getElementById('maxmind-geoip'),
-			script = document.createElement('script');
+		var old = document.getElementById('maxmind-geoip');
+		var script = document.createElement('script');
 		script.onload = function() {
 			Author_geoLocation_callback({ coords: { latitude: geoip_latitude(), longitude: geoip_longitude() } });
 		};
@@ -830,7 +830,7 @@ jQuery(function() {
 					<tr><td>&nbsp;</td></tr>
 					<tr>
 						<th></th>
-						<td><?php printf(__('Please support us by <a href="http://twitter.com/?status=I+just+installed+Author+geoLocation+WordPress+plugin+http:%2F%2Fxenthrax.com%2Fauthor-geolocation+%%23wordpress" target="_blank">tweeting about this plugin</a> or <a href="%1$spost-new.php" target="_blank">writing a post about this plugin</a>.', 'author-geolocation'), admin_url()); ?></td>
+						<td><?php printf(__('Please support us by <a href="http://twitter.com/?status=I+just+installed+Author+geoLocation+WordPress+plugin+http:%%2F%%2Fxenthrax.com%%2Fauthor-geolocation+%%23wordpress" target="_blank">tweeting about this plugin</a> or <a href="%1$spost-new.php" target="_blank">writing a post about this plugin</a>.', 'author-geolocation'), admin_url()); ?></td>
 					</tr>
 					<tr>
 						<th></th>
