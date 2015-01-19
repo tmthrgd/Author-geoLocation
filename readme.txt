@@ -3,9 +3,11 @@ Contributors: TheTomThorogood
 Tags: geolocation, google maps, location, maxmind
 Requires at least: 2.5
 Tested up to: 3.1
-Stable tag: trunk
+Stable tag: 1.0
 
 Allows authors to geocode their posts & pages using the upcoming Geolocation API and display the location using Google Maps.
+
+It also supports the geo-location-javascript library and the MaxMind GeoIP Javascript Service for backwards compatibility.
 
 == Description ==
 
